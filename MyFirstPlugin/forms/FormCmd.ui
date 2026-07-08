@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>FormCmd</class>
+ <widget class="ZsCc::Form" name="FormCmd">
+  <property name="windowModality">
+   <enum>Qt::NonModal</enum>
+  </property>
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>391</width>
+    <height>363</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form Command</string>
+  </property>
+  <property name="functionName">
+   <string notr="true">FormCmd</string>
+  </property>
+  <property name="mode">
+   <enum>ZsCc::Form::Normal</enum>
+  </property>
+  <property name="persistent">
+   <enum>ZsCc::Form::Temporary</enum>
+  </property>
+  <property name="ignore_enter" stdset="0">
+   <bool>true</bool>
+  </property>
+  <property name="form_pos" stdset="0">
+   <stringlist>
+    <string>disp_fix,TT,0.0</string>
+    <string>disp_fix,LL,0.0</string>
+   </stringlist>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="ZsCc::TreeView" name="id102">
+     <property name="id" stdset="0">
+      <number>102</number>
+     </property>
+     <property name="callback" stdset="0">
+      <string>FormCmdCb</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="ZsCc::TableWidget" name="id101">
+     <property name="lineWidth">
+      <number>1</number>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectItems</enum>
+     </property>
+     <property name="sortingEnabled">
+      <bool>true</bool>
+     </property>
+     <property name="cellSize">
+      <size>
+       <width>30</width>
+       <height>25</height>
+      </size>
+     </property>
+     <property name="id" stdset="0">
+      <number>101</number>
+     </property>
+     <property name="callback" stdset="0">
+      <string notr="true">FormCmdCb</string>
+     </property>
+     <property name="RecordSelect" stdset="0">
+      <bool>true</bool>
+     </property>
+     <property name="eventsEnabled" stdset="0">
+      <stringlist notr="true">
+       <string>dbl_clk</string>
+      </stringlist>
+     </property>
+     <attribute name="horizontalHeaderHighlightSections">
+      <bool>false</bool>
+     </attribute>
+     <attribute name="verticalHeaderVisible">
+      <bool>false</bool>
+     </attribute>
+     <attribute name="verticalHeaderHighlightSections">
+      <bool>false</bool>
+     </attribute>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>ZsCc::Form</class>
+   <extends>QDialog</extends>
+   <header>nui/CommonControls/CcForm.hpp</header>
+   <container>1</container>
+  </customwidget>
+  <customwidget>
+   <class>ZsCc::TableWidget</class>
+   <extends>QTableWidget</extends>
+   <header>nui/CommonControls/CcTableWidget.hpp</header>
+  </customwidget>
+  <customwidget>
+   <class>ZsCc::TreeView</class>
+   <extends>QTreeView</extends>
+   <header>nui/CommonControls/CcTreeView.hpp</header>
+  </customwidget>
+ </customwidgets>
+ <resources/>
+ <connections/>
+</ui>

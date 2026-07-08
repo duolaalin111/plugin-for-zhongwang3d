@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../schemas/Template.xsd">
+    <template name="TemplateCmd">
+        <property name="function">TemplateCmd</property>
+        <property name="init">TemplateCmdInit</property>
+        <property name="init_after">TemplateCmdInitA</property>
+        <property name="echo_obj">TemplateCmdEcho</property>
+        <property name="term">TemplateCmdTerm</property>
+        <parameters>
+            <parameter luid="1" type="entity">
+                <property name="options">/curve3/Eedge/Eface/Eplane/Edatum/Ecurve/Eshell/comp/curve/Ecrv_list/Epoint/shape/,</property>
+                <property name="callback">TemplateCmdCb</property>
+                <property name="list">1</property>
+            </parameter>
+        </parameters>
+    </template>
+</templates>

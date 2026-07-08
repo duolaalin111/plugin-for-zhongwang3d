@@ -1,0 +1,6 @@
+LIBRARY MyFirstPlugin.dll
+
+EXPORTS
+    ; Explicit exports can go here
+    MyFirstPluginInit
+    MyFirstPluginExit

@@ -1,0 +1,28 @@
+# Build outputs
+x64/
+*.dll
+*.exe
+*.exp
+*.lib
+*.pdb
+*.ilk
+*.zrc
+*.recipe
+*.log
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.opendb
+*.db
+*.db-shm
+*.db-wal
+ipch/
+
+# NuGet packages
+packages/
+
+# OS files
+Thumbs.db
+Desktop.ini

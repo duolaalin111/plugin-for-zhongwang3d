@@ -1,0 +1,68 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="inc">
+      <UniqueIdentifier>{b2e0c5b6-4d59-490f-b2ff-31c050720ec4}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="src">
+      <UniqueIdentifier>{1c7d53b8-536f-4741-ad1d-b217f8cec1c2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files\commands">
+      <UniqueIdentifier>{68319bf0-8b98-400f-92b3-32b534a689cc}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Resource Files\forms">
+      <UniqueIdentifier>{07cd5d9a-de4d-481d-9d02-77e7761bd6ee}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="inc\MyFirstPluginPr.h">
+      <Filter>inc</Filter>
+    </ClInclude>
+    <ClInclude Include="src\WebViewWindow.h">
+      <Filter>src</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="commands\TemplateCmd.tcmd">
+      <Filter>Resource Files\commands</Filter>
+    </None>
+    <None Include="forms\FormCmd.ui">
+      <Filter>Resource Files\forms</Filter>
+    </None>
+    <None Include="forms\TemplateCmd.ui">
+      <Filter>Resource Files\forms</Filter>
+    </None>
+    <None Include="src\MyFirstPlugin.def">
+      <Filter>src</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\CustomCommand.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\FormCommand.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\main.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\TemplateCommand.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\WebViewWindow.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+  </ItemGroup>
+</Project>
