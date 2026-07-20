@@ -7,6 +7,8 @@ int MyFirstPluginInit()
    RegisterCustomCommand();
    RegisterTemplateCommand();
    RegisterFormCommand();
+   RegisterPartInsertCommand();
+   RegisterPartExpressionCommands();
    return 0;
    }
 
@@ -17,5 +19,7 @@ int MyFirstPluginExit()
    UnloadCustomCommand();
    UnloadTemplateCommand();
    UnloadFormCommand();
+   UnloadPartInsertCommand();
+   UnloadPartExpressionCommands();
    return 0;
    }

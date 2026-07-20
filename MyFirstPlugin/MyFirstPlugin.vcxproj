@@ -47,7 +47,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>_DEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_DEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>$(ZW3D_DIR)api\inc</AdditionalIncludeDirectories>
     </ClCompile>
@@ -70,7 +70,7 @@ ECHO IF EXIST "$(ZW3D_DIR)zrc.exe" "$(ZW3D_DIR)zrc.exe" "$(SolutionDir)\." -o "$
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
-      <PreprocessorDefinitions>NDEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>NDEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
       <AdditionalIncludeDirectories>$(ZW3D_DIR)api\inc</AdditionalIncludeDirectories>
     </ClCompile>
@@ -97,14 +97,15 @@ ECHO IF EXIST "$(ZW3D_DIR)zrc.exe" "$(ZW3D_DIR)zrc.exe" "$(SolutionDir)\." -o "$
     <None Include="commands\TemplateCmd.tcmd" />
     <None Include="forms\FormCmd.ui" />
     <None Include="forms\TemplateCmd.ui" />
-    <None Include="forms\TemplateCmd.ui" />
     <None Include="src\MyFirstPlugin.def" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\CustomCommand.cpp" />
     <ClCompile Include="src\FormCommand.cpp" />
     <ClCompile Include="src\main.cpp" />
+    <ClCompile Include="src\PartInsertCommand_Parameterized.cpp" />
     <ClCompile Include="src\TemplateCommand.cpp" />
+    <ClCompile Include="src\PartExpressionCommand_Fixed.cpp" />
     <ClCompile Include="src\WebViewWindow.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

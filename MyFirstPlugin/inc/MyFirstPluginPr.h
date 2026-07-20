@@ -11,3 +11,13 @@ int RegisterTemplateCommand(void);
 int UnloadTemplateCommand(void);
 int RegisterFormCommand(void);
 int UnloadFormCommand(void);
+int RegisterPartInsertCommand(void);
+int UnloadPartInsertCommand(void);
+int InsertTestBolt(void);
+int InsertBoltShape(void);
+int InsertBearingSmall(void);
+int InsertBearingLarge(void);
+int InsertPartWithParams(const char* dir, const char* file, const char* part,
+                         const char* params, int asShape, int asNewFile);
+int RegisterPartExpressionCommands(void);
+int UnloadPartExpressionCommands(void);

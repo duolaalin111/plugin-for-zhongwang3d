@@ -49,6 +49,12 @@
     </None>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="src\PartExpressionCommand_Fixed.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
+    <ClCompile Include="src\PartInsertCommand_Parameterized.cpp">
+      <Filter>src</Filter>
+    </ClCompile>
     <ClCompile Include="src\CustomCommand.cpp">
       <Filter>src</Filter>
     </ClCompile>
