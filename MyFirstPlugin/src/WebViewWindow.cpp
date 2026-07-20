@@ -110,6 +110,9 @@ static const int BTN_BEARING_SHAPE2 =
 static const int BTN_PARAMETRIC_SHAPE =
     1007;
 
+static const int BTN_BEARING_SHAPE3 =
+    1008;
+
 static const int TOOLBAR_HEIGHT =
     48;
 
@@ -154,6 +157,7 @@ void OnBearingLarge();
 void OnBearingShape();
 void OnBearingShape2();
 void OnParametricShape();
+void OnBearingShape3();
 
 // ============================================================
 // Logging and string helpers
@@ -1117,6 +1121,17 @@ void OnBearingShape2()
         0);  // current root
 }
 
+void OnBearingShape3()
+{
+    InsertPartWithParams(
+        "C:\\Users\\zxcvb\\Documents\\ZW3D\\testparts\\Radial Ball Bearing",
+        "Radial Ball Bearing.Z3PRT",
+        "Radial Ball Bearing",
+        "I.D. (In.),3/8;O.D. (In.),7/8;Width (In.),.25",
+        1,   // shape
+        0);  // current root
+}
+
 void OnImportParametric()
 {
     DisplayMessage(
@@ -1385,6 +1400,24 @@ void CreateToolbar(
                 BTN_PARAMETRIC_SHAPE)),
         hInst,
         nullptr);
+
+    CreateWindowExW(
+        0,
+        L"BUTTON",
+        L"Bearing Shape3",
+        WS_CHILD |
+        WS_VISIBLE |
+        BS_PUSHBUTTON,
+        1034,
+        6,
+        140,
+        TOOLBAR_HEIGHT - 10,
+        hwnd,
+        reinterpret_cast<HMENU>(
+            static_cast<INT_PTR>(
+                BTN_BEARING_SHAPE3)),
+        hInst,
+        nullptr);
 }
 
 // ============================================================
@@ -1443,6 +1476,10 @@ LRESULT CALLBACK WindowProc(
 
         case BTN_PARAMETRIC_SHAPE:
             OnParametricShape();
+            return 0;
+
+        case BTN_BEARING_SHAPE3:
+            OnBearingShape3();
             return 0;
         }
         break;
