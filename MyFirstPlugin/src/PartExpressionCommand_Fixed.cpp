@@ -40,6 +40,7 @@
 // These headers are part of the ZW3D C/C++ SDK.
 #include "zwapi_root.h"
 #include "zwapi_file.h"
+#include "zwapi_asm_comp.h"
 #include "zwapi_part_var.h"
 
 // ------------------------------------------------------------
@@ -785,6 +786,57 @@ int SetPartExpressions(char* assignments)
     return failureCount == 0 ? 0 : -1;
 }
 
+// ============================================================
+// ListAsmExpressions — list expressions of all sub-components
+// in the currently open assembly.
+// ============================================================
+int ListAsmExpressions(void)
+{
+    char file[600] = {}, root[256] = {};
+    cvxFileInqActive(file, sizeof(file));
+    cvxRootInqActive(root, sizeof(root));
+
+    char msg[768];
+    sprintf_s(msg, "[AsmExp] file=%s root=%s", file, root);
+    displayMessage(msg);
+
+    int count = 0; vxLongPath* paths = nullptr; vxRootName* names = nullptr;
+    int ret = cvxPartInqCompsInfoByLongPath(file, root, &count, &paths, &names);
+    sprintf_s(msg, "[AsmExp] comps ret=%d count=%d", ret, count);
+    displayMessage(msg);
+
+    if (ret == 0 && paths && names)
+    {
+        for (int i = 0; i < count; ++i)
+        {
+            sprintf_s(msg, "[AsmExp] comp[%d] path=%s name=%s", i, paths[i], names[i]);
+            displayMessage(msg);
+
+            int vc = 0; svxVariable* vars = nullptr;
+            int vr = cvxPartInqVars(paths[i], names[i], &vc, &vars);
+            if (vr == 0 && vars)
+            {
+                for (int j = 0; j < vc; ++j)
+                {
+                    if (vars[j].Name[0])
+                    {
+                        sprintf_s(msg, "[AsmExp]   expr: %s = %.6g (desc:%s)",
+                                  vars[j].Name, vars[j].Value,
+                                  vars[j].description[0] ? vars[j].description : "");
+                        displayMessage(msg);
+                    }
+                }
+                cvxMemFree((void**)&vars);
+            }
+        }
+        cvxMemFree((void**)&paths);
+        cvxMemFree((void**)&names);
+    }
+
+    displayMessage("[AsmExp] Done.");
+    return 0;
+}
+
 // ------------------------------------------------------------
 // Registration
 //
@@ -827,12 +879,18 @@ int RegisterPartExpressionCommands(void)
     if (ret != 0 && firstError == 0)
         firstError = ret;
 
+    ret = cvxCmdFunc(
+        "ListAsmExpressions",
+        reinterpret_cast<void*>(ListAsmExpressions),
+        VX_CODE_GENERAL);
+    if (ret != 0 && firstError == 0) firstError = ret;
+
     if (firstError == 0)
     {
         displayMessage(
             "Part expression commands registered: "
             "ListPartExpressions, GetPartExpression, "
-            "SetPartExpression, SetPartExpressions.");
+            "SetPartExpression, SetPartExpressions, ListAsmExpressions.");
     }
     else
     {
@@ -854,5 +912,6 @@ int UnloadPartExpressionCommands(void)
     cvxCmdFuncUnload("GetPartExpression");
     cvxCmdFuncUnload("SetPartExpression");
     cvxCmdFuncUnload("SetPartExpressions");
+    cvxCmdFuncUnload("ListAsmExpressions");
     return 0;
 }

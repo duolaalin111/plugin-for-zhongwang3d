@@ -9,6 +9,7 @@ int MyFirstPluginInit()
    RegisterFormCommand();
    RegisterPartInsertCommand();
    RegisterPartExpressionCommands();
+   RegisterFileWatcherCommands();
    return 0;
    }
 
@@ -21,5 +22,6 @@ int MyFirstPluginExit()
    UnloadFormCommand();
    UnloadPartInsertCommand();
    UnloadPartExpressionCommands();
+   UnloadFileWatcherCommands();
    return 0;
    }

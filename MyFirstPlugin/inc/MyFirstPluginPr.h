@@ -21,3 +21,5 @@ int InsertPartWithParams(const char* dir, const char* file, const char* part,
                          const char* params, int asShape, int asNewFile);
 int RegisterPartExpressionCommands(void);
 int UnloadPartExpressionCommands(void);
+int RegisterFileWatcherCommands(void);
+int UnloadFileWatcherCommands(void);
