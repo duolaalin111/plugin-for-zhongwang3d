@@ -142,8 +142,23 @@ static const int BTN_ASM_PARAMETRIC =
 static const int BTN_ASM_OPEN =
     1013;
 
+static const int BTN_ASM_PARAMETRIC_SHAPE =
+    1014;
+
+static const int BTN_ASM_PARAMETRIC2 =
+    1015;
+
+static const int BTN_TAKEOUT_OPEN =
+    1016;
+
+static const int BTN_TAKEOUT_INSERT =
+    1017;
+
+static const int BTN_TAKEOUT_SHAPE =
+    1018;
+
 static const int TOOLBAR_HEIGHT =
-    48;
+    88;
 
 // ============================================================
 // Global window state
@@ -192,10 +207,25 @@ void OnAsmNewFile();
 void OnAsmShape();
 void OnAsmParametric();
 void OnAsmOpen();
+void OnAsmParametricShape();
+void OnAsmParametric2();
+void OnTakeoutOpen();
+void OnTakeoutInsert();
+void OnTakeoutShape();
 
 // ============================================================
 // Logging and string helpers
 // ============================================================
+
+// Convert wide string to system codepage (GBK on Chinese Windows).
+// Use L"中文" literals to avoid source file encoding issues.
+static std::string SysStr(const wchar_t* w)
+{
+    if (!w) return "";
+    char buf[1024] = {};
+    WideCharToMultiByte(CP_ACP, 0, w, -1, buf, sizeof(buf), nullptr, nullptr);
+    return buf;
+}
 
 static void DisplayMessage(
     const char* text)
@@ -1331,25 +1361,141 @@ void OnAsmParametric()
 {
     DisplayMessage("[AsmParam] === START ===");
 
-    char rackPath[512], curFile[512] = {};
-    sprintf_s(rackPath, "%s\\齿条 GB_T1356-1-20-100x15x15.Z3PRT", ASM_DIR);
+    char srcPath[512], curFile[512] = {}, rackPath[512] = {};
+    sprintf_s(srcPath, "%s\\testzbt.Z3ASM", ASM_DIR);
     char m[512];
+
+    // 1. Remember current doc, open assembly to query components
+    cvxFileInqActive(curFile, sizeof(curFile));
+    if (cvxFileOpen(srcPath) != 0) { DisplayMessage("[AsmParam] open asm failed"); return; }
+
+    // 2. Query components, find rack by model number (ASCII-safe matching)
+    char root[256] = {}; cvxRootInqActive(root, sizeof(root));
+    int count = 0; vxLongPath* paths = nullptr; vxRootName* names = nullptr;
+    cvxPartInqCompsInfoByLongPath(srcPath, root, &count, &paths, &names);
+
+    for (int i = 0; i < count && paths && names; ++i)
+        if (strstr(names[i], "T1356")) { strcpy_s(rackPath, paths[i]); break; }
+    if (paths) cvxMemFree((void**)&paths);
+    if (names) cvxMemFree((void**)&names);
     sprintf_s(m, "[AsmParam] 1.rack=%s", rackPath); DisplayMessage(m);
 
-    // ① 打开装配体 → ② 切到齿条改 h=5 → ③ 保存关闭齿条
-    // → ④ 重开装配体 → ⑤ 保存关闭装配体 → ⑥ 回到用户文档 → ⑦ 插入
-    char srcPath[512]; sprintf_s(srcPath, "%s\\testzbt.Z3ASM", ASM_DIR);
-    cvxFileInqActive(curFile, sizeof(curFile));
-    cvxFileOpen(srcPath);                      // ① 打开装配体原件
-    if (cvxFileOpen(rackPath) == 0)             // ② 切到齿条
+    // 3. Open rack, modify h=5, save, close, restore
+    if (rackPath[0] && cvxFileOpen(rackPath) == 0)
     {
-        SetCurrentPartExpression("h", "5");     // ② 改表达式
-        cvxFileSave(1); cvxFileClose();         // ③ 保存并关闭齿条
+        SetCurrentPartExpression("h", "5");
+        cvxFileSave(1); cvxFileClose();
     }
-    if (curFile[0]) cvxFileActivate(curFile);  // ④ 回到用户文档
-    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 0, 1); // ⑤ 插入
+    if (curFile[0]) cvxFileActivate(curFile);
+
+    // 4. Insert
+    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 0, 1);
 
     DisplayMessage("[AsmParam] === DONE ===");
+}
+
+void OnAsmParametricShape()
+{
+    DisplayMessage("[AsmParamShape] === START ===");
+
+    char srcPath[512], curFile[512] = {}, rackPath[512] = {};
+    sprintf_s(srcPath, "%s\\testzbt.Z3ASM", ASM_DIR);
+
+    cvxFileInqActive(curFile, sizeof(curFile));
+    if (cvxFileOpen(srcPath) != 0) return;
+
+    char root[256] = {}; cvxRootInqActive(root, sizeof(root));
+    int count = 0; vxLongPath* paths = nullptr; vxRootName* names = nullptr;
+    cvxPartInqCompsInfoByLongPath(srcPath, root, &count, &paths, &names);
+
+    for (int i = 0; i < count && paths && names; ++i)
+        if (strstr(names[i], "T1356")) { strcpy_s(rackPath, paths[i]); break; }
+    if (paths) cvxMemFree((void**)&paths);
+    if (names) cvxMemFree((void**)&names);
+
+    if (rackPath[0] && cvxFileOpen(rackPath) == 0)
+    {
+        SetCurrentPartExpression("h", "5");
+        cvxFileSave(1); cvxFileClose();
+    }
+    if (curFile[0]) cvxFileActivate(curFile);
+
+    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 1, 0);
+
+    DisplayMessage("[AsmParamShape] === DONE ===");
+}
+
+void OnAsmParametric2()
+{
+    DisplayMessage("[AsmParam2] === START ===");
+
+    char srcPath[512], curFile[512] = {};
+    sprintf_s(srcPath, "%s\\testzbt.Z3ASM", ASM_DIR);
+
+    cvxFileInqActive(curFile, sizeof(curFile));
+    if (cvxFileOpen(srcPath) != 0) return;
+
+    char root[256] = {}; cvxRootInqActive(root, sizeof(root));
+    int count = 0; vxLongPath* paths = nullptr; vxRootName* names = nullptr;
+    cvxPartInqCompsInfoByLongPath(srcPath, root, &count, &paths, &names);
+
+    char rackPath[512] = {}, studPath[512] = {};
+    for (int i = 0; i < count && paths && names; ++i)
+    {
+        if (strstr(names[i], "T1356")) strcpy_s(rackPath, paths[i]);
+        if (strstr(names[i], "899"))   strcpy_s(studPath, paths[i]);
+    }
+    if (paths) cvxMemFree((void**)&paths);
+    if (names) cvxMemFree((void**)&names);
+
+    // Modify rack: h=15
+    char m[512];
+    sprintf_s(m, "[AsmParam2] rack=%s stud=%s", rackPath, studPath); DisplayMessage(m);
+
+    if (rackPath[0] && cvxFileOpen(rackPath) == 0)
+    {
+        DisplayMessage("[AsmParam2] modifying rack h=15");
+        SetCurrentPartExpression("h", "15");
+        cvxFileSave(1); cvxFileClose();   // 改完就关
+    }
+    if (studPath[0] && cvxFileOpen(studPath) == 0)
+    {
+        DisplayMessage("[AsmParam2] modifying stud l=24");
+        SetCurrentPartExpression("l", "24");
+        cvxFileSave(1); cvxFileClose();   // 改完就关
+    }
+    if (curFile[0]) cvxFileActivate(curFile);
+    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 0, 1);
+
+    DisplayMessage("[AsmParam2] === DONE ===");
+}
+
+// \u88c5\u914d = 装配 (Unicode escapes, encoding-independent)
+#define TAKE_DIR  L"C:\\Users\\zxcvb\\Documents\\ZW3D\\zbttestpart\\test\\takeouttest"
+#define TAKE_FILE L"\u88c5\u914d001.Z3ASM"
+#define TAKE_PART L"\u88c5\u914d001"
+
+void OnTakeoutOpen()
+{
+    cvxFileOpen(SysStr(TAKE_DIR L"\\" TAKE_FILE).c_str());
+}
+
+void OnTakeoutInsert()
+{
+    InsertPartWithParams(
+        SysStr(TAKE_DIR).c_str(),
+        SysStr(TAKE_FILE).c_str(),
+        SysStr(TAKE_PART).c_str(),
+        "", 0, 1);
+}
+
+void OnTakeoutShape()
+{
+    InsertPartWithParams(
+        SysStr(TAKE_DIR).c_str(),
+        SysStr(TAKE_FILE).c_str(),
+        SysStr(TAKE_PART).c_str(),
+        "", 1, 0);
 }
 
 void OnAsmOpen()
@@ -1730,7 +1876,7 @@ void CreateToolbar(
         8,
         6,
         120,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1748,7 +1894,7 @@ void CreateToolbar(
         136,
         6,
         170,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1766,7 +1912,7 @@ void CreateToolbar(
         314,
         6,
         130,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1784,7 +1930,7 @@ void CreateToolbar(
         452,
         6,
         130,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1802,7 +1948,7 @@ void CreateToolbar(
         590,
         6,
         130,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1820,7 +1966,7 @@ void CreateToolbar(
         728,
         6,
         140,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1838,7 +1984,7 @@ void CreateToolbar(
         876,
         6,
         150,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1856,7 +2002,7 @@ void CreateToolbar(
         1034,
         6,
         140,
-        TOOLBAR_HEIGHT - 10,
+        36,
         hwnd,
         reinterpret_cast<HMENU>(
             static_cast<INT_PTR>(
@@ -1866,32 +2012,63 @@ void CreateToolbar(
 
     CreateWindowExW(0, L"BUTTON", L"Check In",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1182, 6, 100, TOOLBAR_HEIGHT - 10,
+        1182, 6, 100, 36,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_CHECKIN)),
         hInst, nullptr);
 
+    // --- Second row: assembly buttons ---
     CreateWindowExW(0, L"BUTTON", L"Asm NewFile",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1290, 6, 130, TOOLBAR_HEIGHT - 10,
+        8,  46, 130, 36,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_NEWFILE)),
         hInst, nullptr);
 
     CreateWindowExW(0, L"BUTTON", L"Asm Shape",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1428, 6, 110, TOOLBAR_HEIGHT - 10,
+        146, 46, 110, 36,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_SHAPE)),
         hInst, nullptr);
 
     CreateWindowExW(0, L"BUTTON", L"Asm Parametric",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1546, 6, 140, TOOLBAR_HEIGHT - 10,
+        264, 46, 140, 36,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_PARAMETRIC)),
+        hInst, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"AsmPmt Shape",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        412, 46, 130, 36,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_PARAMETRIC_SHAPE)),
         hInst, nullptr);
 
     CreateWindowExW(0, L"BUTTON", L"Asm Open",
         WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        1694, 6, 100, TOOLBAR_HEIGHT - 10,
+        550, 46, 100, 36,
         hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_OPEN)),
+        hInst, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"AsmParam2",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        658, 46, 120, 36,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_ASM_PARAMETRIC2)),
+        hInst, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"Open Takeout",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        786, 46, 120, 36,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_TAKEOUT_OPEN)),
+        hInst, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"Insert Takeout",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        914, 46, 130, 36,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_TAKEOUT_INSERT)),
+        hInst, nullptr);
+
+    CreateWindowExW(0, L"BUTTON", L"Takeout Shape",
+        WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        1052, 46, 130, 36,
+        hwnd, reinterpret_cast<HMENU>(static_cast<INT_PTR>(BTN_TAKEOUT_SHAPE)),
         hInst, nullptr);
 }
 
@@ -1971,6 +2148,26 @@ LRESULT CALLBACK WindowProc(
 
         case BTN_ASM_PARAMETRIC:
             OnAsmParametric();
+            return 0;
+
+        case BTN_ASM_PARAMETRIC_SHAPE:
+            OnAsmParametricShape();
+            return 0;
+
+        case BTN_ASM_PARAMETRIC2:
+            OnAsmParametric2();
+            return 0;
+
+        case BTN_TAKEOUT_OPEN:
+            OnTakeoutOpen();
+            return 0;
+
+        case BTN_TAKEOUT_INSERT:
+            OnTakeoutInsert();
+            return 0;
+
+        case BTN_TAKEOUT_SHAPE:
+            OnTakeoutShape();
             return 0;
 
         case BTN_ASM_OPEN:
