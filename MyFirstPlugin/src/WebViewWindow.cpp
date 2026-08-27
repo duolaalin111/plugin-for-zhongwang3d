@@ -54,6 +54,7 @@
 #include "zwapi_root.h"
 #include "zwapi_asm_comp.h"
 #include "zwapi_part_var.h"
+#include "zwapi_asm_reuselibrary.h"
 
 using namespace Microsoft::WRL;
 
@@ -212,6 +213,10 @@ void OnAsmParametric2();
 void OnTakeoutOpen();
 void OnTakeoutInsert();
 void OnTakeoutShape();
+static int InsertAssemblyComponent(
+    const char* dir, const char* file, const char* part, int copyPart);
+static int InsertAssemblyShape(
+    const char* dir, const char* file, const char* part);
 
 // ============================================================
 // Logging and string helpers
@@ -1337,21 +1342,13 @@ static const char* const ASM_DIR =
 void OnAsmNewFile()
 {
     DisplayMessage("[AsmOut] Assembly as new file...");
-    InsertPartWithParams(
-        ASM_DIR, "testzbt.Z3ASM", "testzbt",
-        "",   // default params
-        0,    // as component
-        1);   // as new file
+    InsertAssemblyComponent(ASM_DIR, "testzbt.Z3ASM", "testzbt", 1);
 }
 
 void OnAsmShape()
 {
     DisplayMessage("[AsmOut] Assembly as shape...");
-    InsertPartWithParams(
-        ASM_DIR, "testzbt.Z3ASM", "testzbt",
-        "",   // default params
-        1,    // as shape
-        0);   // current root
+    InsertAssemblyShape(ASM_DIR, "testzbt.Z3ASM", "testzbt");
 }
 
 // ============================================================
@@ -1389,7 +1386,7 @@ void OnAsmParametric()
     if (curFile[0]) cvxFileActivate(curFile);
 
     // 4. Insert
-    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 0, 1);
+    InsertAssemblyComponent(ASM_DIR, "testzbt.Z3ASM", "testzbt", 1);
 
     DisplayMessage("[AsmParam] === DONE ===");
 }
@@ -1420,7 +1417,7 @@ void OnAsmParametricShape()
     }
     if (curFile[0]) cvxFileActivate(curFile);
 
-    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 1, 0);
+    InsertAssemblyShape(ASM_DIR, "testzbt.Z3ASM", "testzbt");
 
     DisplayMessage("[AsmParamShape] === DONE ===");
 }
@@ -1465,7 +1462,7 @@ void OnAsmParametric2()
         cvxFileSave(1); cvxFileClose();   // 改完就关
     }
     if (curFile[0]) cvxFileActivate(curFile);
-    InsertPartWithParams(ASM_DIR, "testzbt.Z3ASM", "testzbt", "", 0, 1);
+    InsertAssemblyComponent(ASM_DIR, "testzbt.Z3ASM", "testzbt", 1);
 
     DisplayMessage("[AsmParam2] === DONE ===");
 }
@@ -1477,25 +1474,105 @@ void OnAsmParametric2()
 
 void OnTakeoutOpen()
 {
+    char m[1024];
+    sprintf_s(m, "[TakeoutOpen] open %s",
+        SysStr(TAKE_DIR L"\\" TAKE_FILE).c_str());
+    DisplayMessage(m);
     cvxFileOpen(SysStr(TAKE_DIR L"\\" TAKE_FILE).c_str());
+}
+
+// Insert an assembly (.Z3ASM) as a component via the standard component insert
+// API. cvxLibPartIns (reuse-library insert) fails to resolve nested
+// sub-assemblies (装配001 -> abc/cba), but cvxCompIns uses the normal
+// same-directory + search-path resolution, so nested assemblies work.
+static int InsertAssemblyComponent(
+    const char* dir,
+    const char* file,
+    const char* part,
+    int copyPart)
+{
+    svxCompData component = {};
+
+    int ret = cvxCompInsInit(&component);
+    if (ret != 0)
+    {
+        char m[512];
+        sprintf_s(m, "[AsmIns] cvxCompInsInit failed ret=%d", ret);
+        DisplayMessage(m);
+        return ret;
+    }
+
+    strcpy_s(component.Dir, sizeof(component.Dir), dir);
+    strcpy_s(component.File, sizeof(component.File), file);
+    strcpy_s(component.Part, sizeof(component.Part), part);
+
+    component.Frame.identity = 1;
+    component.SettingsData.AutoActivated = 0;
+    component.InstanceData.CopyPart = copyPart ? 1 : 0;
+
+    int componentId = 0;
+    ret = cvxCompIns(&component, &componentId);
+
+    char m[1024];
+    sprintf_s(m, "[AsmIns] cvxCompIns ret=%d id=%d file=%s part=%s copyPart=%d",
+        ret, componentId, file, part, copyPart ? 1 : 0);
+    DisplayMessage(m);
+
+    return ret;
 }
 
 void OnTakeoutInsert()
 {
-    InsertPartWithParams(
+    InsertAssemblyComponent(
         SysStr(TAKE_DIR).c_str(),
         SysStr(TAKE_FILE).c_str(),
         SysStr(TAKE_PART).c_str(),
-        "", 0, 1);
+        0);   // reference, no copy (test)
+}
+
+// Insert an assembly (.Z3ASM) as a shape via cvxInstPartAsShp. Same root cause
+// as component insert: cvxLibPartIns fails on nested sub-assemblies, so use the
+// non-reuse-library shape API which resolves through the normal mechanism.
+static int InsertAssemblyShape(
+    const char* dir,
+    const char* file,
+    const char* part)
+{
+    svxCompData component = {};
+
+    int ret = cvxCompInsInit(&component);
+    if (ret != 0)
+    {
+        char m[512];
+        sprintf_s(m, "[AsmShape] cvxCompInsInit failed ret=%d", ret);
+        DisplayMessage(m);
+        return ret;
+    }
+
+    strcpy_s(component.Dir, sizeof(component.Dir), dir);
+    strcpy_s(component.File, sizeof(component.File), file);
+    strcpy_s(component.Part, sizeof(component.Part), part);
+
+    component.Frame.identity = 1;
+    component.SettingsData.AutoActivated = 0;
+    component.InstanceData.CopyPart = 0;
+
+    evxErrors e = cvxInstPartAsShp(&component);
+
+    char m[1024];
+    sprintf_s(m, "[AsmShape] cvxInstPartAsShp err=%d file=%s part=%s",
+        (int)e, file, part);
+    DisplayMessage(m);
+
+    return (int)e;
 }
 
 void OnTakeoutShape()
 {
-    InsertPartWithParams(
+    InsertAssemblyShape(
         SysStr(TAKE_DIR).c_str(),
         SysStr(TAKE_FILE).c_str(),
-        SysStr(TAKE_PART).c_str(),
-        "", 1, 0);
+        SysStr(TAKE_PART).c_str());
 }
 
 void OnAsmOpen()
