@@ -49,6 +49,7 @@
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>_DEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ZW3D_DIR)api\inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -62,8 +63,18 @@
     </Link>
     <PostBuildEvent>
       <Command>IF EXIST "$(ZW3D_DIR)zrc.exe" "$(ZW3D_DIR)zrc.exe" "$(SolutionDir)\." -o "$(TargetDir)$(ProjectName).zrc"
-copy /Y "$(TargetDir)$(ProjectName).dll" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
-copy /Y "$(TargetDir)$(ProjectName).zrc" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"</Command>
+IF NOT EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs" mkdir "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs"
+copy /Y "$(TargetDir)$(ProjectName).dll" "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
+copy /Y "$(TargetDir)$(ProjectName).zrc" "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Action\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Action\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-2\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-2\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-10\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-10\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-13\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-13\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\RibbonPagesUser.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\RibbonPagesUser.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Strategy\MyFirstPluginUI" rmdir /S /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Strategy\MyFirstPluginUI"
+xcopy /E /I /Y "$(SolutionDir)Settings" "$(TargetDir)MyFirstPluginUI\Settings\"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$(SolutionDir)Install-ZW3DMenu.ps1"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -74,6 +85,7 @@ copy /Y "$(TargetDir)$(ProjectName).zrc" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;ZW3DTEMPLATE_EXPORTS;_WINDOWS;_USRDLL;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>false</ConformanceMode>
+      <AdditionalOptions>/utf-8 %(AdditionalOptions)</AdditionalOptions>
       <AdditionalIncludeDirectories>$(ZW3D_DIR)api\inc</AdditionalIncludeDirectories>
     </ClCompile>
     <Link>
@@ -89,8 +101,18 @@ copy /Y "$(TargetDir)$(ProjectName).zrc" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\
     </Link>
     <PostBuildEvent>
       <Command>IF EXIST "$(ZW3D_DIR)zrc.exe" "$(ZW3D_DIR)zrc.exe" "$(SolutionDir)\." -o "$(TargetDir)$(ProjectName).zrc"
-copy /Y "$(TargetDir)$(ProjectName).dll" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
-copy /Y "$(TargetDir)$(ProjectName).zrc" "C:\Users\zxcvb\AppData\Roaming\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"</Command>
+IF NOT EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs" mkdir "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs"
+copy /Y "$(TargetDir)$(ProjectName).dll" "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
+copy /Y "$(TargetDir)$(ProjectName).zrc" "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Action\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Action\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-2\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-2\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-10\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-10\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-13\Controls\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Environment-13\Controls\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\MyFirstPlugin.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\MyFirstPlugin.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\RibbonPagesUser.zcui" del /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\ResourcePool\RibbonPagesUser.zcui"
+IF EXIST "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Strategy\MyFirstPluginUI" rmdir /S /Q "$(APPDATA)\ZWSOFT\ZW3D\ZW3D WuKong 2027\custom\apilibs\Settings\Default\Strategy\MyFirstPluginUI"
+xcopy /E /I /Y "$(SolutionDir)Settings" "$(TargetDir)MyFirstPluginUI\Settings\"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$(SolutionDir)Install-ZW3DMenu.ps1"</Command>
     </PostBuildEvent>
   </ItemDefinitionGroup>
   <ItemGroup>

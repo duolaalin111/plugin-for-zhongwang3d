@@ -150,7 +150,8 @@ static int InsertPartWithSelection(
     const char* instanceName,
     const char* valStr,
     int insertAsShape,
-    int createNewFile)
+    int createNewFile,
+    const svxPoint* insertionPoint = nullptr)
 {
     if (dir == nullptr || dir[0] == '\0' ||
         file == nullptr || file[0] == '\0' ||
@@ -166,14 +167,38 @@ static int InsertPartWithSelection(
     EnsureMaterial("Carbon Steel");
 
     svxCompData componentData = {};
-    cvxCompInsInit(&componentData);
+    const int initResult = cvxCompInsInit(&componentData);
+    if (initResult != 0)
+    {
+        char message[256] = {};
+        sprintf_s(
+            message,
+            "cvxCompInsInit failed: ret=%d",
+            initResult);
+        cvxMsgDisp(message);
+        return initResult;
+    }
 
     CopyText(componentData.Dir, dir);
     CopyText(componentData.File, file);
     CopyText(componentData.Part, part);
 
-    // Insert at the origin using the identity placement frame.
-    componentData.Frame.identity = 1;
+    if (insertionPoint != nullptr)
+    {
+        // A translated identity frame places the generated part at the point
+        // selected by the user in the active ZW3D model.
+        componentData.Frame.identity = 0;
+        componentData.Frame.xx = 1.0;
+        componentData.Frame.yy = 1.0;
+        componentData.Frame.zz = 1.0;
+        componentData.Frame.xt = insertionPoint->x;
+        componentData.Frame.yt = insertionPoint->y;
+        componentData.Frame.zt = insertionPoint->z;
+    }
+    else
+    {
+        componentData.Frame.identity = 1;
+    }
 
     // Activate the inserted component automatically.
     componentData.SettingsData.AutoActivated = 1;
@@ -239,7 +264,31 @@ int InsertPartWithParams(
         nullptr,
         params,
         asShape,
-        asNewFile);
+        asNewFile,
+        nullptr);
+}
+
+int InsertPartWithParamsAt(
+    const char* dir,
+    const char* file,
+    const char* part,
+    const char* params,
+    int asShape,
+    int asNewFile,
+    double x,
+    double y,
+    double z)
+{
+    const svxPoint insertionPoint = { x, y, z };
+    return InsertPartWithSelection(
+        dir,
+        file,
+        part,
+        nullptr,
+        params,
+        asShape,
+        asNewFile,
+        &insertionPoint);
 }
 
 // -----------------------------------------------------------------------------
