@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Actions system="false">
+  <Action name="ID_~MyOpenDialog" type="button">
+    <Form />
+    <Text>
+      <Ribbon>打开图库</Ribbon>
+      <Menu>打开图库</Menu>
+    </Text>
+    <Icon />
+    <Hint>打开图库管理窗口</Hint>
+    <Help />
+    <Desc>在 ZW3D 内打开图库管理 WebView2 窗口。</Desc>
+    <Script>~MyOpenDialog</Script>
+  </Action>
+</Actions>

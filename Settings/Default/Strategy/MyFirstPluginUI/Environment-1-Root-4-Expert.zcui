@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Strategy profileType="UIProfile" environment="1" role="4-Expert">
+  <DefaultCustomizations>
+    <Insert type="RibbonPage" name="MyFirstPluginLibraryPage" topCollection="Layout_1_Root" leftSibling="#InsertAtLast">
+      <property text="图库管理" visible="true" />
+    </Insert>
+    <Insert type="RibbonGroup" name="MyFirstPluginLibraryGroup" topParent="MyFirstPluginLibraryPage" parent="MyFirstPluginLibraryPage" leftSibling="#InsertAtLast">
+      <property text="图库" visible="true" />
+    </Insert>
+    <Insert type="GroupPanel" name="MyFirstPluginLibraryGroup_GroupPanel" topParent="MyFirstPluginLibraryPage" parent="MyFirstPluginLibraryGroup" />
+    <Insert type="Control" name="ID_~MyOpenDialog" topParent="MyFirstPluginLibraryPage" parent="MyFirstPluginLibraryGroup_GroupPanel" leftSibling="#InsertAtLast">
+      <property buttonStyle="4" visible="true" />
+    </Insert>
+  </DefaultCustomizations>
+</Strategy>
