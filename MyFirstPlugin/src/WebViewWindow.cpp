@@ -38,6 +38,11 @@
 //     readPartParams|requestId|pathOrUrl|token
 //         (opens the part and posts partParamsReady with its expression
 //          list — fallback when the part library has no specs)
+//     listOpenParts
+//         (posts openPartsReady with every Z3PRT root currently open in ZW3D)
+//     importOpenPart|filePath|root
+//         (activates the selected open part, reads user attributes and
+//          expressions, exports STEP, and posts partImportReady)
 //
 // If the path or parameter text is omitted, the test constants below
 // are used.
@@ -80,8 +85,10 @@
 #include "zwapi_shape.h"
 #include "zwapi_face.h"
 #include "zwapi_entity.h"
+#include "zwapi_general_ent.h"
 #include "zwapi_part_facets.h"
 #include "zwapi_userinput.h"
+#include "zwapi_attribute.h"
 
 using namespace Microsoft::WRL;
 
@@ -188,6 +195,7 @@ static HWND g_hwnd =
 
 static ComPtr<ICoreWebView2Controller> g_controller;
 static ComPtr<ICoreWebView2> g_webview;
+static std::string g_partImportFailure;
 
 static bool g_initialized =
     false;
@@ -373,6 +381,26 @@ static bool EnsureDirectory(
 
 static std::string GetInstanceDirectory()
 {
+    char localAppData[MAX_PATH] = {};
+    if (GetEnvironmentVariableA(
+            "LOCALAPPDATA",
+            localAppData,
+            static_cast<DWORD>(sizeof(localAppData))) > 0 &&
+        localAppData[0] != '\0')
+    {
+        std::string pluginDirectory =
+            std::string(localAppData) + "\\MyFirstPlugin";
+        if (!EnsureDirectory(pluginDirectory.c_str()))
+            return "";
+
+        std::string instanceDirectory =
+            pluginDirectory + "\\instances";
+        if (!EnsureDirectory(instanceDirectory.c_str()))
+            return "";
+
+        return instanceDirectory;
+    }
+
     char tempDirectory[MAX_PATH] = {};
     if (GetTempPathA(MAX_PATH, tempDirectory) == 0)
         return "";
@@ -1405,6 +1433,269 @@ static void PostStockInFailure(
     PostWebJson(json);
 }
 
+static bool HasZ3prtExtension(const char* path)
+{
+    if (path == nullptr)
+        return false;
+
+    const char* extension = strrchr(path, '.');
+    return extension != nullptr &&
+           _stricmp(extension, ".Z3PRT") == 0;
+}
+
+static void AppendOpenPartCandidate(
+    std::vector<std::string>& partFiles,
+    std::vector<std::string>& partRoots,
+    const char* filePath,
+    const char* rootName)
+{
+    if (filePath == nullptr || filePath[0] == '\0' ||
+        rootName == nullptr || rootName[0] == '\0')
+    {
+        return;
+    }
+
+    for (size_t index = 0; index < partFiles.size(); ++index)
+    {
+        if (_stricmp(partFiles[index].c_str(), filePath) == 0 &&
+            _stricmp(partRoots[index].c_str(), rootName) == 0)
+        {
+            return;
+        }
+    }
+
+    partFiles.push_back(filePath);
+    partRoots.push_back(rootName);
+}
+
+static bool IsPartRoot(const char* filePath, const char* rootName)
+{
+    int isAssembly = 1;
+    if (cvxRootIsAsm(filePath, rootName, &isAssembly) != 0)
+        return false;
+
+    return isAssembly == 0;
+}
+
+static void AppendPartRootsFromFile(
+    const char* filePath,
+    std::vector<std::string>& partFiles,
+    std::vector<std::string>& partRoots)
+{
+    if (filePath == nullptr || filePath[0] == '\0')
+        return;
+
+    int rootCount = 0;
+    vxRootName* rootNames = nullptr;
+    if (cvxRootInqSymbol(filePath, &rootCount, &rootNames) != 0 ||
+        rootNames == nullptr)
+    {
+        return;
+    }
+
+    for (int rootIndex = 0; rootIndex < rootCount; ++rootIndex)
+    {
+        if (HasZ3prtExtension(filePath) ||
+            IsPartRoot(filePath, rootNames[rootIndex]))
+        {
+            AppendOpenPartCandidate(
+                partFiles,
+                partRoots,
+                filePath,
+                rootNames[rootIndex]);
+        }
+    }
+
+    cvxMemFree(reinterpret_cast<void**>(&rootNames));
+}
+
+static void PostOpenPartsResult()
+{
+    std::vector<std::string> partFiles;
+    std::vector<std::string> partRoots;
+
+    // The active part is the most reliable fallback across ZW3D versions.
+    char activeFile[600] = {};
+    char activeRoot[256] = {};
+    cvxFileInqActive(activeFile, sizeof(activeFile));
+    cvxRootInqActive(activeRoot, sizeof(activeRoot));
+    if (activeFile[0] != '\0' && activeRoot[0] != '\0' &&
+        (HasZ3prtExtension(activeFile) ||
+         IsPartRoot(nullptr, nullptr)))
+    {
+        AppendOpenPartCandidate(
+            partFiles,
+            partRoots,
+            activeFile,
+            activeRoot);
+    }
+
+    int openFileCount = 0;
+    vxPath* openFiles = nullptr;
+    cvxFileOpenList(&openFileCount, &openFiles);
+    if (openFiles != nullptr)
+    {
+        for (int index = 0; index < openFileCount; ++index)
+        {
+            AppendPartRootsFromFile(
+                openFiles[index],
+                partFiles,
+                partRoots);
+        }
+        cvxMemFree(reinterpret_cast<void**>(&openFiles));
+    }
+
+    int longOpenFileCount = 0;
+    vxLongPath* longOpenFiles = nullptr;
+    cvxFileOpenListByLongPath(&longOpenFileCount, &longOpenFiles);
+    if (longOpenFiles != nullptr)
+    {
+        for (int index = 0; index < longOpenFileCount; ++index)
+        {
+            AppendPartRootsFromFile(
+                longOpenFiles[index],
+                partFiles,
+                partRoots);
+        }
+        cvxMemFree(reinterpret_cast<void**>(&longOpenFiles));
+    }
+
+    std::string json =
+        "{\"action\":\"openPartsReady\",\"success\":true,\"parts\":[";
+    for (size_t index = 0; index < partFiles.size(); ++index)
+    {
+        const std::string& filePath = partFiles[index];
+        const std::string& root = partRoots[index];
+        const char* fileNamePointer =
+            strrchr(filePath.c_str(), '\\');
+        const std::string fileName = fileNamePointer != nullptr
+            ? std::string(fileNamePointer + 1)
+            : filePath;
+
+        if (index > 0)
+            json += ',';
+        json += "{\"filePath\":\"" + EscapeJsonString(filePath) +
+                "\",\"fileName\":\"" + EscapeJsonString(fileName) +
+                "\",\"root\":\"" + EscapeJsonString(root) +
+                "\",\"displayName\":\"" +
+                EscapeJsonString(root + " (" + fileName + ")") + "\"}";
+    }
+    json += "]}";
+    PostWebJson(json);
+}
+static bool HasZ3asmExtension(const char* path)
+{
+    if (path == nullptr)
+        return false;
+
+    const char* extension = strrchr(path, '.');
+    return extension != nullptr &&
+           _stricmp(extension, ".Z3ASM") == 0;
+}
+
+static bool IsAssemblyRoot(const char* filePath, const char* rootName)
+{
+    int isAssembly = 0;
+    if (cvxRootIsAsm(filePath, rootName, &isAssembly) != 0)
+        return false;
+
+    return isAssembly != 0;
+}
+
+static void AppendAssemblyRootsFromFile(
+    const char* filePath,
+    std::vector<std::string>& assemblyFiles,
+    std::vector<std::string>& assemblyRoots)
+{
+    if (filePath == nullptr || filePath[0] == '\0')
+        return;
+
+    int rootCount = 0;
+    vxRootName* rootNames = nullptr;
+    if (cvxRootInqSymbol(filePath, &rootCount, &rootNames) != 0 ||
+        rootNames == nullptr)
+    {
+        return;
+    }
+
+    for (int rootIndex = 0; rootIndex < rootCount; ++rootIndex)
+    {
+        if (HasZ3asmExtension(filePath) ||
+            IsAssemblyRoot(filePath, rootNames[rootIndex]))
+        {
+            AppendOpenPartCandidate(
+                assemblyFiles,
+                assemblyRoots,
+                filePath,
+                rootNames[rootIndex]);
+        }
+    }
+
+    cvxMemFree(reinterpret_cast<void**>(&rootNames));
+}
+
+static void PostOpenAssembliesResult()
+{
+    std::vector<std::string> assemblyFiles;
+    std::vector<std::string> assemblyRoots;
+
+    char activeFile[600] = {};
+    char activeRoot[256] = {};
+    cvxFileInqActive(activeFile, sizeof(activeFile));
+    cvxRootInqActive(activeRoot, sizeof(activeRoot));
+    if (activeFile[0] != '\0' && activeRoot[0] != '\0' &&
+        (HasZ3asmExtension(activeFile) ||
+         IsAssemblyRoot(nullptr, nullptr)))
+    {
+        AppendOpenPartCandidate(
+            assemblyFiles,
+            assemblyRoots,
+            activeFile,
+            activeRoot);
+    }
+
+    int openFileCount = 0;
+    vxPath* openFiles = nullptr;
+    cvxFileOpenList(&openFileCount, &openFiles);
+    if (openFiles != nullptr)
+    {
+        for (int index = 0; index < openFileCount; ++index)
+            AppendAssemblyRootsFromFile(openFiles[index], assemblyFiles, assemblyRoots);
+        cvxMemFree(reinterpret_cast<void**>(&openFiles));
+    }
+
+    int longOpenFileCount = 0;
+    vxLongPath* longOpenFiles = nullptr;
+    cvxFileOpenListByLongPath(&longOpenFileCount, &longOpenFiles);
+    if (longOpenFiles != nullptr)
+    {
+        for (int index = 0; index < longOpenFileCount; ++index)
+            AppendAssemblyRootsFromFile(longOpenFiles[index], assemblyFiles, assemblyRoots);
+        cvxMemFree(reinterpret_cast<void**>(&longOpenFiles));
+    }
+
+    std::string json =
+        "{\"action\":\"openAssembliesReady\",\"success\":true,\"assemblies\":[";
+    for (size_t index = 0; index < assemblyFiles.size(); ++index)
+    {
+        const std::string& filePath = assemblyFiles[index];
+        const std::string& root = assemblyRoots[index];
+        const char* fileNamePointer = strrchr(filePath.c_str(), '\\');
+        const std::string fileName = fileNamePointer != nullptr
+            ? std::string(fileNamePointer + 1)
+            : filePath;
+
+        if (index > 0)
+            json += ',';
+        json += "{\"filePath\":\"" + EscapeJsonString(filePath) +
+                "\",\"fileName\":\"" + EscapeJsonString(fileName) +
+                "\",\"root\":\"" + EscapeJsonString(root) +
+                "\",\"displayName\":\"" +
+                EscapeJsonString(root + " (" + fileName + ")") + "\"}";
+    }
+    json += "]}";
+    PostWebJson(json);
+}
 static void PostZ3prtPreviewResult(
     const std::string& requestId,
     const std::string& bitmapBase64,
@@ -3193,6 +3484,210 @@ static std::string CreateUniqueAssemblyInstanceDirectory(
     return directory;
 }
 
+static bool RewriteCopiedAssemblyReferences(
+    const std::string& instanceDirectory,
+    const std::string& topAssemblyPath,
+    const std::vector<AsmSubComponent>& components)
+{
+    if (instanceDirectory.empty() ||
+        topAssemblyPath.empty() ||
+        !FileExists(topAssemblyPath.c_str()))
+    {
+        return false;
+    }
+
+    const ZwDocumentContext originalContext = CaptureActiveContext();
+    if (!originalContext.valid)
+        return false;
+
+    std::vector<std::string> assemblyFiles;
+    assemblyFiles.push_back(topAssemblyPath);
+
+    for (const AsmSubComponent& component : components)
+    {
+        const size_t dot = component.fileName.find_last_of('.');
+        if (dot == std::string::npos ||
+            _stricmp(component.fileName.c_str() + dot, ".Z3ASM") != 0)
+        {
+            continue;
+        }
+
+        const std::string copiedPath =
+            instanceDirectory + "\\" + component.fileName;
+        if (!FileExists(copiedPath.c_str()))
+            continue;
+
+        bool duplicate = false;
+        for (const std::string& existing : assemblyFiles)
+        {
+            if (SameLocalFilePath(
+                    existing.c_str(),
+                    copiedPath.c_str()))
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate)
+            assemblyFiles.push_back(copiedPath);
+    }
+
+    bool overallSuccess = true;
+
+    for (const std::string& assemblyPath : assemblyFiles)
+    {
+        const bool alreadyActive =
+            ActiveDocumentMatchesPath(assemblyPath.c_str());
+        const int openResult = alreadyActive
+            ? 0
+            : cvxFileOpen(assemblyPath.c_str());
+
+        if (openResult != 0 ||
+            !ActiveDocumentMatchesPath(assemblyPath.c_str()))
+        {
+            AppendPreviewLog(
+                "[AsmParamOut] component reference open failed file=%s open=%d",
+                assemblyPath.c_str(),
+                openResult);
+            overallSuccess = false;
+            continue;
+        }
+
+        int componentCount = 0;
+        szwEntityHandle* componentHandles = nullptr;
+        const ezwErrors listResult = ZwComponentListGet(
+            nullptr,
+            1,
+            0,
+            0,
+            0,
+            &componentCount,
+            &componentHandles);
+
+        int changedCount = 0;
+        int failedCount = 0;
+
+        if (listResult == 0 && componentHandles != nullptr)
+        {
+            for (int index = 0; index < componentCount; ++index)
+            {
+                char currentFile[600] = {};
+                char currentRoot[256] = {};
+                const ezwErrors getResult = ZwComponentFileAndRootGet(
+                    componentHandles[index],
+                    static_cast<int>(sizeof(currentFile)),
+                    currentFile,
+                    static_cast<int>(sizeof(currentRoot)),
+                    currentRoot);
+
+                if (getResult != 0 || currentFile[0] == '\0')
+                {
+                    ++failedCount;
+                    continue;
+                }
+
+                std::string currentDirectory;
+                std::string currentFileName;
+                if (!SplitFilePath(
+                        currentFile,
+                        &currentDirectory,
+                        &currentFileName))
+                {
+                    ++failedCount;
+                    continue;
+                }
+
+                const std::string targetPath =
+                    instanceDirectory + "\\" + currentFileName;
+                if (!FileExists(targetPath.c_str()))
+                {
+                    ++failedCount;
+                    continue;
+                }
+
+                if (SameLocalFilePath(
+                        currentFile,
+                        targetPath.c_str()))
+                {
+                    continue;
+                }
+
+                const ezwErrors setResult = ZwComponentFileSet(
+                    componentHandles[index],
+                    targetPath.c_str(),
+                    currentRoot[0] != '\0'
+                        ? currentRoot
+                        : nullptr);
+
+                if (setResult == 0)
+                {
+                    ++changedCount;
+                    AppendPreviewLog(
+                        "[AsmParamOut] component reference rewritten old=%s new=%s",
+                        currentFile,
+                        targetPath.c_str());
+                }
+                else
+                {
+                    ++failedCount;
+                    AppendPreviewLog(
+                        "[AsmParamOut] component reference rewrite failed old=%s new=%s ret=%d",
+                        currentFile,
+                        targetPath.c_str(),
+                        static_cast<int>(setResult));
+                }
+            }
+        }
+        else
+        {
+            failedCount = componentCount;
+            AppendPreviewLog(
+                "[AsmParamOut] component reference list failed file=%s ret=%d count=%d",
+                assemblyPath.c_str(),
+                static_cast<int>(listResult),
+                componentCount);
+        }
+
+        if (componentHandles != nullptr)
+            ZwEntityHandleListFree(componentCount, &componentHandles);
+
+        int saveResult = 0;
+        if (changedCount > 0)
+        {
+            if (!ActiveDocumentMatchesPath(assemblyPath.c_str()) &&
+                cvxFileActivate(assemblyPath.c_str()) != 0)
+            {
+                saveResult = -1;
+            }
+            else
+            {
+                saveResult = cvxFileSave3(0, 1, 0);
+            }
+        }
+
+        const bool closed =
+            ClosePluginDocument(assemblyPath.c_str());
+
+        AppendPreviewLog(
+            "[AsmParamOut] component reference file=%s changed=%d failed=%d save=%d closed=%d",
+            assemblyPath.c_str(),
+            changedCount,
+            failedCount,
+            saveResult,
+            closed ? 1 : 0);
+
+        if (saveResult != 0 || !closed || failedCount > 0)
+            overallSuccess = false;
+    }
+
+    const int restoreResult =
+        RestoreContext(originalContext);
+    if (restoreResult != 0)
+        overallSuccess = false;
+
+    return overallSuccess;
+}
+
 // asmOpen|path — open a .Z3ASM.
 static int AsmOpenWorkflow(
     const char* path)
@@ -3401,6 +3896,14 @@ static int AsmParametricWorkflow(
         DisplayMessage(
             "[AsmParamOut] no active document to insert into.");
         g_asmOutError = "no-active-document";
+        return -1;
+    }
+
+    if (ActiveDocumentMatchesPath(sourcePath.c_str()))
+    {
+        DisplayMessage(
+            "[AsmParamOut] refusing to insert an assembly into itself.");
+        g_asmOutError = "self-insert";
         return -1;
     }
 
@@ -3726,6 +4229,17 @@ static int AsmParametricWorkflow(
             "[AsmParamOut] aborted because one or more sub-components "
             "could not be copied.");
         g_asmOutError = "copy-failed";
+        return -1;
+    }
+
+    if (!RewriteCopiedAssemblyReferences(
+            instanceDir,
+            instanceAsmPath,
+            components))
+    {
+        DisplayMessage(
+            "[AsmParamOut] failed to rewrite copied assembly component references.");
+        g_asmOutError = "component-reference-rewrite-failed";
         return -1;
     }
 
@@ -4298,17 +4812,442 @@ static bool PostAssemblyStockInResult(const char* assemblyPath)
 // ============================================================
 // Check-in: save file, export STP, notify front-end
 // ============================================================
+struct PartUserAttributeSnapshot
+{
+    std::string name;
+    std::string type;
+    std::string expression;
+    std::string value;
+    std::string description;
+    int typeCode = -1;
+    int subType = -1;
+    int unitType = -1;
+    int dateFormat = -1;
+    int listSize = 0;
+};
+
+struct PartExpressionSnapshot
+{
+    std::string name;
+    std::string description;
+    std::string expression;
+    std::string value;
+    int type = -1;
+    int subType = -1;
+    int unitType = -1;
+};
+
+static std::string FormatNumber(double value)
+{
+    char buffer[64] = {};
+    sprintf_s(buffer, "%.15g", value);
+    return std::string(buffer);
+}
+
+static const char* UserAttributeTypeName(ezwUserAttributeType type)
+{
+    switch (type)
+    {
+    case ZW_USER_ATTRIBUTE_STRING:
+        return "string";
+    case ZW_USER_ATTRIBUTE_BOOL:
+        return "boolean";
+    case ZW_USER_ATTRIBUTE_INT:
+        return "integer";
+    case ZW_USER_ATTRIBUTE_REAL_NUMBER:
+        return "number";
+    case ZW_USER_ATTRIBUTE_DATE:
+        return "date";
+    default:
+        return "unknown";
+    }
+}
+
+static void CollectActivePartImportData(
+    const std::string& partPath,
+    const std::string& rootName,
+    std::vector<PartUserAttributeSnapshot>* attributesOut,
+    std::vector<PartExpressionSnapshot>* expressionsOut,
+    std::vector<std::string>* warningsOut)
+{
+    if (attributesOut == nullptr || expressionsOut == nullptr)
+        return;
+
+    attributesOut->clear();
+    expressionsOut->clear();
+
+    auto appendAttributeList = [&](int count, szwUserAttribute* list) {
+        if (list == nullptr)
+            return;
+
+        for (int index = 0; index < count; ++index)
+        {
+            const szwUserAttribute& source = list[index];
+            PartUserAttributeSnapshot attribute;
+            attribute.name = source.name;
+            attribute.description = source.description;
+            attribute.typeCode = static_cast<int>(source.type);
+            attribute.type = UserAttributeTypeName(source.type);
+            attribute.listSize = source.listSize;
+
+            switch (source.type)
+            {
+            case ZW_USER_ATTRIBUTE_STRING:
+                attribute.expression =
+                    source.uzwsubAttribute.szwString.expression;
+                attribute.value =
+                    source.uzwsubAttribute.szwString.value;
+                break;
+            case ZW_USER_ATTRIBUTE_BOOL:
+            {
+                const bool value =
+                    source.uzwsubAttribute.szwBool.value != 0;
+                attribute.expression = value ? "true" : "false";
+                attribute.value = attribute.expression;
+                break;
+            }
+            case ZW_USER_ATTRIBUTE_INT:
+                attribute.expression =
+                    source.uzwsubAttribute.szwInteger.expression;
+                attribute.value = std::to_string(
+                    source.uzwsubAttribute.szwInteger.value);
+                break;
+            case ZW_USER_ATTRIBUTE_REAL_NUMBER:
+                attribute.subType = static_cast<int>(
+                    source.uzwsubAttribute.szwNumber.subType);
+                attribute.unitType = static_cast<int>(
+                    source.uzwsubAttribute.szwNumber.unitType);
+                attribute.expression =
+                    source.uzwsubAttribute.szwNumber.expression;
+                attribute.value = FormatNumber(
+                    source.uzwsubAttribute.szwNumber.value);
+                break;
+            case ZW_USER_ATTRIBUTE_DATE:
+                attribute.subType = static_cast<int>(
+                    source.uzwsubAttribute.szwDate.subType);
+                attribute.dateFormat = static_cast<int>(
+                    source.uzwsubAttribute.szwDate.dateFormat);
+                attribute.expression = FormatNumber(
+                    source.uzwsubAttribute.szwDate.expression);
+                attribute.value =
+                    source.uzwsubAttribute.szwDate.value;
+                break;
+            default:
+                break;
+            }
+
+            if (attribute.value.empty())
+                attribute.value = attribute.expression;
+
+            bool duplicate = false;
+            for (const PartUserAttributeSnapshot& existing : *attributesOut)
+            {
+                if (existing.name == attribute.name &&
+                    existing.expression == attribute.expression &&
+                    existing.value == attribute.value)
+                {
+                    duplicate = true;
+                    break;
+                }
+            }
+            if (!duplicate)
+                attributesOut->push_back(attribute);
+        }
+    };
+
+    int attributeCount = 0;
+    szwUserAttribute* attributeList = nullptr;
+    const int attributeResult =
+        ZwUserAttributeGet(nullptr, &attributeCount, &attributeList);
+
+    if (attributeResult == 0 && attributeList != nullptr)
+        appendAttributeList(attributeCount, attributeList);
+    else if (attributeResult != 0 && warningsOut != nullptr)
+    {
+        warningsOut->push_back(
+            "ZwUserAttributeGet failed with code " +
+            std::to_string(attributeResult));
+    }
+
+    if (attributeList != nullptr)
+        ZwUserAttributeDataFree(attributeCount, &attributeList);
+
+    if (attributesOut->empty())
+    {
+        zwRootName nativeRootName = {};
+        strcpy_s(nativeRootName, rootName.c_str());
+        szwEntityHandle rootHandle = {};
+        ezwRootType rootType = {};
+        if (ZwRootIdGet(
+                nativeRootName,
+                &rootHandle,
+                &rootType) == 0)
+        {
+            int rootAttributeCount = 0;
+            szwUserAttribute* rootAttributeList = nullptr;
+            if (ZwEntityUserAttributeGet(
+                    rootHandle,
+                    nullptr,
+                    &rootAttributeCount,
+                    &rootAttributeList) == 0 &&
+                rootAttributeList != nullptr)
+            {
+                appendAttributeList(rootAttributeCount, rootAttributeList);
+            }
+            if (rootAttributeList != nullptr)
+                ZwUserAttributeDataFree(rootAttributeCount, &rootAttributeList);
+            ZwEntityHandleFree(&rootHandle);
+        }
+    }
+
+    if (attributesOut->empty())
+    {
+        int shapeCount = 0;
+        szwEntityHandle* shapes = nullptr;
+        if (ZwShapeListGet(&shapeCount, &shapes) == 0 && shapes != nullptr)
+        {
+            for (int shapeIndex = 0; shapeIndex < shapeCount; ++shapeIndex)
+            {
+                int shapeAttributeCount = 0;
+                szwUserAttribute* shapeAttributeList = nullptr;
+                if (ZwEntityUserAttributeGet(
+                        shapes[shapeIndex],
+                        nullptr,
+                        &shapeAttributeCount,
+                        &shapeAttributeList) == 0 &&
+                    shapeAttributeList != nullptr)
+                {
+                    appendAttributeList(
+                        shapeAttributeCount,
+                        shapeAttributeList);
+                }
+                if (shapeAttributeList != nullptr)
+                    ZwUserAttributeDataFree(
+                        shapeAttributeCount,
+                        &shapeAttributeList);
+            }
+            ZwEntityHandleListFree(shapeCount, &shapes);
+        }
+    }
+    int expressionCount = 0;
+    svxVariable* variables = nullptr;
+    const int expressionResult = cvxPartInqVars(
+        partPath.c_str(),
+        rootName.c_str(),
+        &expressionCount,
+        &variables);
+
+    if (expressionResult == 0 && variables != nullptr)
+    {
+        for (int index = 0; index < expressionCount; ++index)
+        {
+            const svxVariable& source = variables[index];
+            if (source.Name[0] == '\0')
+                continue;
+
+            PartExpressionSnapshot expression;
+            expression.name = source.Name;
+            expression.description = source.description;
+            expression.expression = source.Expression;
+            expression.value = FormatNumber(source.Value);
+            expression.type = static_cast<int>(source.type);
+            expression.subType = static_cast<int>(source.sub_type);
+            expression.unitType = static_cast<int>(source.unit_type);
+            expressionsOut->push_back(expression);
+        }
+    }
+    else if (expressionResult != 0 && warningsOut != nullptr)
+    {
+        warningsOut->push_back(
+            "cvxPartInqVars failed with code " +
+            std::to_string(expressionResult));
+    }
+
+    if (variables != nullptr)
+        cvxMemFree(reinterpret_cast<void**>(&variables));
+}
+
+struct TemporaryFileGuard
+{
+    std::string path;
+
+    ~TemporaryFileGuard()
+    {
+        if (!path.empty())
+            DeleteFileA(path.c_str());
+    }
+};
+
+static bool BuildTemporaryStepPath(std::string* stepPath)
+{
+    if (stepPath == nullptr)
+        return false;
+
+    char tempDirectory[MAX_PATH] = {};
+    if (GetTempPathA(MAX_PATH, tempDirectory) == 0)
+        return false;
+
+    const std::string pluginDirectory =
+        std::string(tempDirectory) + "MyFirstPlugin";
+    if (!EnsureDirectory(pluginDirectory.c_str()))
+        return false;
+
+    char path[600] = {};
+    const int length = _snprintf_s(
+        path,
+        sizeof(path),
+        _TRUNCATE,
+        "%s\\import_%lu_%llu.stp",
+        pluginDirectory.c_str(),
+        static_cast<unsigned long>(GetCurrentProcessId()),
+        static_cast<unsigned long long>(GetTickCount64()));
+    if (length <= 0 || length >= static_cast<int>(sizeof(path)))
+        return false;
+
+    *stepPath = path;
+    AppendPreviewLog("[Import] temporary STEP path=%s", path);
+    return true;
+}
+
+static bool PostOpenAssemblyImportResult(
+    const char* assemblyPath,
+    const char* rootName)
+{
+    if (!FileExists(assemblyPath))
+        return false;
+
+    const std::vector<unsigned char> modelBytes =
+        ReadBinaryFile(assemblyPath);
+    if (modelBytes.empty())
+        return false;
+
+    std::string modelDirectory;
+    std::string modelFileName;
+    if (!SplitFilePath(assemblyPath, &modelDirectory, &modelFileName))
+        return false;
+
+    std::string stepPath;
+    if (!ExportAssemblyStepFile(assemblyPath, &stepPath))
+        return false;
+
+    const std::string stepBase64 =
+        EncodeBase64(ReadBinaryFile(stepPath.c_str()));
+    DeleteFileA(stepPath.c_str());
+    if (stepBase64.empty())
+        return false;
+
+    std::vector<PartUserAttributeSnapshot> attributes;
+    std::vector<PartExpressionSnapshot> expressions;
+    std::vector<std::string> metadataWarnings;
+    CollectActivePartImportData(
+        assemblyPath,
+        rootName,
+        &attributes,
+        &expressions,
+        &metadataWarnings);
+
+    const std::vector<StockInDependency> dependencies =
+        CollectAssemblyDependencies(assemblyPath);
+
+    std::string json =
+        "{\"action\":\"assemblyImportReady\",\"success\":true,"
+        "\"kind\":\"assembly\"";
+    auto addText = [&](const char* key, const std::string& value) {
+        json += ",\"" + std::string(key) + "\":\"" +
+                EscapeJsonString(value) + "\"";
+    };
+    addText("path", assemblyPath);
+    addText("root", rootName);
+    addText("modelFileName", modelFileName);
+    addText("stepFileName", FileNameWithoutExtension(modelFileName) + ".step");
+    json += ",\"modelBase64\":\"" + EncodeBase64(modelBytes) + "\"";
+    json += ",\"stepBase64\":\"" + stepBase64 + "\"";
+
+    json += ",\"attributes\":[";
+    for (size_t index = 0; index < attributes.size(); ++index)
+    {
+        const PartUserAttributeSnapshot& attribute = attributes[index];
+        if (index > 0)
+            json += ',';
+        json += "{\"name\":\"" + EscapeJsonString(attribute.name) +
+                "\",\"type\":\"" + EscapeJsonString(attribute.type) +
+                "\",\"typeCode\":" + std::to_string(attribute.typeCode) +
+                ",\"expression\":\"" + EscapeJsonString(attribute.expression) +
+                "\",\"value\":\"" + EscapeJsonString(attribute.value) +
+                "\",\"description\":\"" + EscapeJsonString(attribute.description) +
+                "\",\"subType\":" + std::to_string(attribute.subType) +
+                ",\"unitType\":" + std::to_string(attribute.unitType) +
+                ",\"dateFormat\":" + std::to_string(attribute.dateFormat) +
+                ",\"listSize\":" + std::to_string(attribute.listSize) + "}";
+    }
+    json += "],\"expressions\":[";
+    for (size_t index = 0; index < expressions.size(); ++index)
+    {
+        const PartExpressionSnapshot& expression = expressions[index];
+        if (index > 0)
+            json += ',';
+        json += "{\"name\":\"" + EscapeJsonString(expression.name) +
+                "\",\"description\":\"" + EscapeJsonString(expression.description) +
+                "\",\"expression\":\"" + EscapeJsonString(expression.expression) +
+                "\",\"value\":\"" + EscapeJsonString(expression.value) +
+                "\",\"type\":" + std::to_string(expression.type) +
+                ",\"subType\":" + std::to_string(expression.subType) +
+                ",\"unitType\":" + std::to_string(expression.unitType) + "}";
+    }
+    json += "],\"metadataWarnings\":[";
+    for (size_t index = 0; index < metadataWarnings.size(); ++index)
+    {
+        if (index > 0)
+            json += ',';
+        json += "\"" + EscapeJsonString(metadataWarnings[index]) + "\"";
+    }
+    json += "],\"dependencies\":[";
+    for (size_t index = 0; index < dependencies.size(); ++index)
+    {
+        const StockInDependency& dependency = dependencies[index];
+        if (index > 0)
+            json += ',';
+        json += "{\"rootName\":\"" + EscapeJsonString(dependency.rootName) +
+                "\",\"sourcePath\":\"" + EscapeJsonString(dependency.path) +
+                "\",\"fileName\":\"" + EscapeJsonString(dependency.fileName) +
+                "\",\"base64\":\"" + dependency.base64 + "\"}";
+    }
+    json += "]}";
+
+    PostWebJson(json);
+    return true;
+}
 static bool DoCheckinAndNotify(
     const char* filePath = nullptr,
-    const char* resultAction = "checkinReady")
+    const char* resultAction = "checkinReady",
+    bool activeFileIsTarget = false)
 {
     DisplayMessage("[Checkin] === START ===");
+    AppendPreviewLog("[Import] DoCheckin start");
+    g_partImportFailure.clear();
 
     char z3prtPath[600] = {}, rootName[256] = {};
 
     if (filePath && filePath[0])
     {
         strcpy_s(z3prtPath, filePath);
+        if (strchr(z3prtPath, '\\') == nullptr &&
+            strchr(z3prtPath, '/') == nullptr)
+        {
+            char activeDirectory[600] = {};
+            cvxFileDirectoryByLongPath(
+                activeDirectory,
+                static_cast<int>(sizeof(activeDirectory)));
+            if (activeDirectory[0] != '\0')
+            {
+                std::string fullPath = activeDirectory;
+                if (fullPath.back() != '\\' && fullPath.back() != '/')
+                    fullPath += '\\';
+                fullPath += z3prtPath;
+                strcpy_s(z3prtPath, fullPath.c_str());
+            }
+        }
+        AppendPreviewLog("[Import] source path=%s", z3prtPath);
         char m[512]; sprintf_s(m, "[Checkin] 1.path=%s", z3prtPath); DisplayMessage(m);
     }
     else
@@ -4325,7 +5264,12 @@ static bool DoCheckinAndNotify(
         }
     }
 
-    if (z3prtPath[0] == '\0') { DisplayMessage("[Checkin] ABORT: no path"); return false; }
+    if (z3prtPath[0] == '\0')
+{
+    g_partImportFailure = "The active ZW3D part has no file path";
+    DisplayMessage("[Checkin] ABORT: no path");
+    return false;
+}
 
     if (!rootName[0])
     {
@@ -4335,15 +5279,23 @@ static bool DoCheckinAndNotify(
     }
     char m1[256]; sprintf_s(m1, "[Checkin] 2.root=%s", rootName); DisplayMessage(m1);
 
-    // STP path
-    char stpPath[512] = {};
-    strcpy_s(stpPath, z3prtPath);
-    char* dot = strrchr(stpPath, '.'); if (dot) *dot = '\0';
-    strcat_s(stpPath, ".stp");
+    std::string temporaryStepPath;
+    if (!BuildTemporaryStepPath(&temporaryStepPath))
+    {
+        g_partImportFailure = "Unable to create a temporary STEP path";
+        return false;
+    }
 
-    bool stpExists = FileExists(stpPath);
+    TemporaryFileGuard temporaryStepGuard = { temporaryStepPath };
+    char stpPath[600] = {};
+    strcpy_s(stpPath, temporaryStepPath.c_str());
+
+    bool stpExists = false;
     int stpRet = -1;
     char m2[512]; sprintf_s(m2, "[Checkin] 3.STP exists=%d path=%s", stpExists, stpPath); DisplayMessage(m2);
+    std::vector<PartUserAttributeSnapshot> userAttributes;
+    std::vector<PartExpressionSnapshot> expressions;
+    std::vector<std::string> metadataWarnings;
 
     // Always regenerate STEP so check-in cannot upload a stale sidecar left
     // by an earlier version of the Z3PRT.  Keep the user's active document
@@ -4352,8 +5304,9 @@ static bool DoCheckinAndNotify(
         CaptureActiveContext();
     const bool exportFromActiveFile =
         originalContext.valid &&
-        SameLocalFilePath(originalContext.file, z3prtPath);
+        (activeFileIsTarget || ActiveDocumentMatchesPath(z3prtPath));
     bool openedForExport = false;
+
 
     if (!exportFromActiveFile)
     {
@@ -4361,11 +5314,36 @@ static bool DoCheckinAndNotify(
         int openRet = cvxFileOpen(z3prtPath);
         char m3[128]; sprintf_s(m3, "[Checkin] 4.open ret=%d", openRet); DisplayMessage(m3);
         openedForExport = openRet == 0;
+        if (!openedForExport)
+        {
+            g_partImportFailure = "Unable to open the selected Z3PRT (code " +
+                std::to_string(openRet) + ")";
+        }
     }
 
     if (exportFromActiveFile || openedForExport)
     {
+        char activeRoot[256] = {};
+        cvxRootInqActive(activeRoot, sizeof(activeRoot));
+        if (activeRoot[0] != '\0')
+        {
+            strcpy_s(rootName, activeRoot);
+        }
+
+        CollectActivePartImportData(
+            z3prtPath,
+            rootName,
+            &userAttributes,
+            &expressions,
+            &metadataWarnings);
+        AppendPreviewLog(
+            "[Import] metadata attributes=%d expressions=%d warnings=%d",
+            static_cast<int>(userAttributes.size()),
+            static_cast<int>(expressions.size()),
+            static_cast<int>(metadataWarnings.size()));
+
         svxSTEPData sd = {};
+        AppendPreviewLog("[Import] before cvxFileExportInit");
         const int initRet =
             cvxFileExportInit(VX_EXPORT_TYPE_STEP, 0, &sd);
 
@@ -4380,6 +5358,7 @@ static bool DoCheckinAndNotify(
             stpRet = initRet;
         }
 
+        AppendPreviewLog("[Import] cvxFileExport result=%d", stpRet);
         char m4[128]; sprintf_s(m4, "[Checkin] 5.export ret=%d", stpRet); DisplayMessage(m4);
 
         if (openedForExport)
@@ -4394,8 +5373,11 @@ static bool DoCheckinAndNotify(
         RestoreContext(originalContext);
 
     stpExists = stpRet == 0 && FileExists(stpPath);
+    AppendPreviewLog("[Import] STEP exists=%d path=%s", stpExists ? 1 : 0, stpPath);
     if (!stpExists)
     {
+        g_partImportFailure = "STEP export failed (code " +
+            std::to_string(stpRet) + ")";
         DisplayMessage(
             "[Checkin] ABORT: the current STEP file could not be exported.");
         return false;
@@ -4403,7 +5385,7 @@ static bool DoCheckinAndNotify(
 
     // Companions
     char base[512] = {}; strcpy_s(base, z3prtPath);
-    dot = strrchr(base, '.'); if (dot) *dot = '\0';
+    char* dot = strrchr(base, '.'); if (dot) *dot = '\0';
     char xlsxPath[600] = {}; sprintf_s(xlsxPath, "%s.xlsx", base);
     char z3lPath[600]  = {}; sprintf_s(z3lPath,  "%s.z3l",  base);
     char pngPath[600]  = {}; sprintf_s(pngPath,  "%s.png",  base);
@@ -4414,12 +5396,14 @@ static bool DoCheckinAndNotify(
 
     const std::string z3B = EncodeBase64(ReadBinaryFile(z3prtPath));
     const std::string stB = EncodeBase64(ReadBinaryFile(stpPath));
+    AppendPreviewLog("[Import] base64 model=%d step=%d", static_cast<int>(z3B.size()), static_cast<int>(stB.size()));
     const std::string pnB = hasP ? EncodeBase64(ReadBinaryFile(pngPath)) : "";
     const std::string zlB = hasZ ? EncodeBase64(ReadBinaryFile(z3lPath)) : "";
     const std::string xlB = hasX ? EncodeBase64(ReadBinaryFile(xlsxPath)) : "";
 
     if (z3B.empty())
     {
+        g_partImportFailure = "Unable to read the selected Z3PRT file";
         DisplayMessage("[Checkin] ABORT: cannot read the selected Z3PRT.");
         return false;
     }
@@ -4431,9 +5415,7 @@ static bool DoCheckinAndNotify(
     std::string modelDirectory;
     std::string modelFileName;
     SplitFilePath(z3prtPath, &modelDirectory, &modelFileName);
-    std::string stepDirectory;
-    std::string stepFileName;
-    SplitFilePath(stpPath, &stepDirectory, &stepFileName);
+    const std::string stepFileName = std::string(rootName) + ".step";
 
     std::string json = "{\"action\":\"";
     json += EscapeJsonString(resultAction ? resultAction : "checkinReady");
@@ -4462,6 +5444,69 @@ static bool DoCheckinAndNotify(
     if (hasP) { addText("thumbFileName", FileNameWithoutExtension(pngPath) + ".png"); addBase64("pngBase64", pnB); }
     if (hasZ) { addText("configFileName", FileNameWithoutExtension(z3lPath) + ".z3l"); addBase64("z3lBase64", zlB); }
     if (hasX) { addText("dataFileName", FileNameWithoutExtension(xlsxPath) + ".xlsx"); addBase64("xlsxBase64", xlB); }
+
+    json += ",\"attributes\":[";
+    for (size_t index = 0; index < userAttributes.size(); ++index)
+    {
+        if (index > 0)
+            json += ',';
+
+        const PartUserAttributeSnapshot& attribute =
+            userAttributes[index];
+        json += "{\"name\":\"" +
+                EscapeJsonString(attribute.name) +
+                "\",\"type\":\"" +
+                EscapeJsonString(attribute.type) +
+                "\",\"typeCode\":" +
+                std::to_string(attribute.typeCode) +
+                ",\"expression\":\"" +
+                EscapeJsonString(attribute.expression) +
+                "\",\"value\":\"" +
+                EscapeJsonString(attribute.value) +
+                "\",\"description\":\"" +
+                EscapeJsonString(attribute.description) +
+                "\",\"subType\":" +
+                std::to_string(attribute.subType) +
+                ",\"unitType\":" +
+                std::to_string(attribute.unitType) +
+                ",\"dateFormat\":" +
+                std::to_string(attribute.dateFormat) +
+                ",\"listSize\":" +
+                std::to_string(attribute.listSize) +
+                "}";
+    }
+    json += "],\"expressions\":[";
+    for (size_t index = 0; index < expressions.size(); ++index)
+    {
+        if (index > 0)
+            json += ',';
+
+        const PartExpressionSnapshot& expression =
+            expressions[index];
+        json += "{\"name\":\"" +
+                EscapeJsonString(expression.name) +
+                "\",\"description\":\"" +
+                EscapeJsonString(expression.description) +
+                "\",\"expression\":\"" +
+                EscapeJsonString(expression.expression) +
+                "\",\"value\":\"" +
+                EscapeJsonString(expression.value) +
+                "\",\"type\":" +
+                std::to_string(expression.type) +
+                ",\"subType\":" +
+                std::to_string(expression.subType) +
+                ",\"unitType\":" +
+                std::to_string(expression.unitType) +
+                "}";
+    }
+    json += "],\"metadataWarnings\":[";
+    for (size_t index = 0; index < metadataWarnings.size(); ++index)
+    {
+        if (index > 0)
+            json += ',';
+        json += "\"" + EscapeJsonString(metadataWarnings[index]) + "\"";
+    }
+    json += "]";
     json += "}";
 
     char m7[256]; sprintf_s(m7, "[Checkin] 9.JSON %d bytes webview=%p", (int)json.size(), (void*)g_webview.Get()); DisplayMessage(m7);
@@ -4620,6 +5665,92 @@ static bool DownloadToExactPath(
     return true;
 }
 
+static bool RenameDownloadedComponentRoot(
+    const std::string& filePath,
+    const std::string& expectedRoot)
+{
+    if (filePath.empty() || expectedRoot.empty())
+        return false;
+
+    int rootCount = 0;
+    vxRootName* rootNames = nullptr;
+    if (cvxRootList(
+            filePath.c_str(),
+            &rootCount,
+            &rootNames) != 0 ||
+        rootNames == nullptr ||
+        rootCount <= 0)
+    {
+        AppendPreviewLog(
+            "[AsmParamOut] root rename enumerate failed file=%s count=%d",
+            filePath.c_str(),
+            rootCount);
+        if (rootNames)
+            cvxMemFree(reinterpret_cast<void**>(&rootNames));
+        return false;
+    }
+
+    std::string currentRoot = rootNames[0];
+    for (int rootIndex = 0; rootIndex < rootCount; ++rootIndex)
+    {
+        if (_stricmp(rootNames[rootIndex], expectedRoot.c_str()) == 0)
+        {
+            currentRoot = rootNames[rootIndex];
+            break;
+        }
+    }
+    cvxMemFree(reinterpret_cast<void**>(&rootNames));
+
+    AppendPreviewLog(
+        "[AsmParamOut] root rename selected file=%s count=%d current=%s expected=%s",
+        filePath.c_str(),
+        rootCount,
+        currentRoot.c_str(),
+        expectedRoot.c_str());
+
+    if (_stricmp(currentRoot.c_str(), expectedRoot.c_str()) == 0)
+        return true;
+
+    const int activateResult = cvxRootActivate2(
+        filePath.c_str(),
+        currentRoot.c_str());
+    if (activateResult != 0)
+    {
+        AppendPreviewLog(
+            "[AsmParamOut] root rename activate failed file=%s code=%d",
+            filePath.c_str(),
+            activateResult);
+        return false;
+    }
+
+    vxRootName oldRoot = {};
+    vxRootName newRoot = {};
+    strcpy_s(oldRoot, sizeof(oldRoot), currentRoot.c_str());
+    strcpy_s(newRoot, sizeof(newRoot), expectedRoot.c_str());
+
+    const int renameResult = cvxRootRename2(
+        oldRoot,
+        newRoot,
+        nullptr,
+        1);
+    const int saveResult = renameResult == 0
+        ? cvxFileSave3(0, 1, 0)
+        : renameResult;
+
+    cvxRootActivate2(nullptr, nullptr);
+    const bool closed = ClosePluginDocument(filePath.c_str());
+
+    AppendPreviewLog(
+        "[AsmParamOut] root rename file=%s old=%s new=%s rename=%d save=%d closed=%d",
+        filePath.c_str(),
+        currentRoot.c_str(),
+        expectedRoot.c_str(),
+        renameResult,
+        saveResult,
+        closed ? 1 : 0);
+
+    return renameResult == 0 && saveResult == 0 && closed;
+}
 static int AsmParametricUrlWorkflow(
     const char* url,
     const char* spec,
@@ -4627,13 +5758,32 @@ static int AsmParametricUrlWorkflow(
     const char* bearerToken,
     const char* manifestJson)
 {
+    AppendPreviewLog(
+        "[AsmParamOut] source=%s manifest=%s",
+        url ? url : "",
+        manifestJson ? manifestJson : "");
+
     if (url == nullptr || url[0] == '\0')
     {
+        g_asmOutError = "empty-download-url";
         DisplayMessage("[AsmParamOut] empty assembly url.");
         return -1;
     }
 
     const std::string originalAssemblyFileName = UrlFileName(url);
+    const std::string originalRootHint =
+        FileNameWithoutExtension(originalAssemblyFileName);
+    const ZwDocumentContext activeContext =
+        CaptureActiveContext();
+    if (activeContext.valid &&
+        !originalRootHint.empty() &&
+        _stricmp(activeContext.root, originalRootHint.c_str()) == 0)
+    {
+        g_asmOutError = "self-insert";
+        DisplayMessage(
+            "[AsmParamOut] refusing to insert an assembly into itself.");
+        return -1;
+    }
 
     const size_t extensionPosition =
         originalAssemblyFileName.find_last_of('.');
@@ -4660,6 +5810,7 @@ static int AsmParametricUrlWorkflow(
     if (stagingDirectory.empty() ||
         !EnsureDirectory(stagingDirectory.c_str()))
     {
+        g_asmOutError = "staging-dir-failed";
         DisplayMessage("[AsmParamOut] cannot create staging directory.");
         return -1;
     }
@@ -4672,6 +5823,7 @@ static int AsmParametricUrlWorkflow(
 
     if (!DownloadToExactPath(url, assemblyPath, bearerToken))
     {
+        g_asmOutError = "assembly-download-failed";
         DisplayMessage("[AsmParamOut] assembly download failed.");
         failed = true;
     }
@@ -4705,12 +5857,54 @@ static int AsmParametricUrlWorkflow(
                     message,
                     "[AsmParamOut] component download failed: %s",
                     entry.fileName.c_str());
+                g_asmOutError =
+                    "component-download-failed:" + entry.fileName;
                 DisplayMessage(message);
                 failed = true;
                 break;
             }
 
             stagedFiles.push_back(targetPath);
+        }
+
+        if (!failed)
+        {
+            for (const AsmManifestEntry& entry : manifest)
+            {
+                const char* extension = strrchr(entry.fileName.c_str(), '.');
+                if (extension == nullptr ||
+                    (_stricmp(extension, ".Z3PRT") != 0 &&
+                     _stricmp(extension, ".Z3ASM") != 0))
+                {
+                    continue;
+                }
+
+                const std::string targetPath =
+                    stagingDirectory + "\\" + entry.fileName;
+                const std::string expectedRoot =
+                    FileNameWithoutExtension(entry.fileName);
+                if (!RenameDownloadedComponentRoot(
+                        targetPath,
+                        expectedRoot))
+                {
+                    g_asmOutError =
+                        "component-root-rename-failed:" + entry.fileName;
+                    char message[1024] = {};
+                    sprintf_s(
+                        message,
+                        "[AsmParamOut] component root rename failed: %s -> %s",
+                        entry.fileName.c_str(),
+                        expectedRoot.c_str());
+                    DisplayMessage(message);
+                    failed = true;
+                    break;
+                }
+
+                AppendPreviewLog(
+                    "[AsmParamOut] renamed component root: %s -> %s",
+                    entry.fileName.c_str(),
+                    expectedRoot.c_str());
+            }
         }
     }
 
@@ -4728,6 +5922,13 @@ static int AsmParametricUrlWorkflow(
         DeleteFileA(stagedFile.c_str());
     RemoveDirectoryA(stagingDirectory.c_str());
 
+    if (result == -1 && g_asmOutError.empty())
+        g_asmOutError = "assembly-workflow-failed";
+
+    AppendPreviewLog(
+        "[AsmParamOut] result=%d error=%s",
+        result,
+        g_asmOutError.c_str());
     return result;
 }
 
@@ -4933,6 +6134,138 @@ static void HandleFrontendMessage(
         return;
     }
 
+    if (_stricmp(action.c_str(), "listOpenParts") == 0)
+    {
+        PostOpenPartsResult();
+        return;
+    }
+
+    if (_stricmp(action.c_str(), "importOpenPart") == 0)
+    {
+        const std::string filePath =
+            fields.size() >= 2 ? Trim(fields[1]) : "";
+        const std::string rootName =
+            fields.size() >= 3 ? Trim(fields[2]) : "";
+
+        if (filePath.empty() || rootName.empty())
+        {
+            PostStockInFailure(
+                "partImportReady",
+                "No open ZW3D part was specified",
+                false);
+            return;
+        }
+
+        AppendPreviewLog(
+            "[Import] activate file=%s root=%s",
+            filePath.c_str(),
+            rootName.c_str());
+        const int activateResult =
+            cvxRootActivate2(filePath.c_str(), rootName.c_str());
+        AppendPreviewLog("[Import] activate result=%d", activateResult);
+        if (activateResult != 0)
+        {
+            PostStockInFailure(
+                "partImportReady",
+                "Unable to activate the selected ZW3D part",
+                false);
+            return;
+        }
+
+        const bool imported =
+            DoCheckinAndNotify(
+                filePath.c_str(),
+                "partImportReady",
+                true);
+        cvxRootActivate2(nullptr, nullptr);
+
+        if (!imported)
+        {
+            PostStockInFailure(
+                "partImportReady",
+                g_partImportFailure.empty()
+                    ? "Unable to import the selected ZW3D part"
+                    : g_partImportFailure.c_str(),
+                false);
+        }
+        return;
+    }
+    if (_stricmp(action.c_str(), "listOpenAssemblies") == 0)
+    {
+        PostOpenAssembliesResult();
+        return;
+    }
+
+    if (_stricmp(action.c_str(), "importOpenAssembly") == 0)
+    {
+        const std::string filePath =
+            fields.size() >= 2 ? Trim(fields[1]) : "";
+        const std::string rootName =
+            fields.size() >= 3 ? Trim(fields[2]) : "";
+
+        if (filePath.empty() || rootName.empty())
+        {
+            PostStockInFailure(
+                "assemblyImportReady",
+                "No open ZW3D assembly was specified",
+                false);
+            return;
+        }
+
+        std::string normalizedFilePath = filePath;
+        if (normalizedFilePath.find('\\') == std::string::npos &&
+            normalizedFilePath.find('/') == std::string::npos)
+        {
+            char activeDirectory[600] = {};
+            cvxFileDirectoryByLongPath(
+                activeDirectory,
+                static_cast<int>(sizeof(activeDirectory)));
+            if (activeDirectory[0] != '\0')
+            {
+                std::string fullPath = activeDirectory;
+                if (fullPath.back() != '\\' && fullPath.back() != '/')
+                    fullPath += '\\';
+                fullPath += normalizedFilePath;
+                normalizedFilePath = fullPath;
+            }
+        }
+
+        if (normalizedFilePath.find('\\') == std::string::npos ||
+            !FileExists(normalizedFilePath.c_str()))
+        {
+            const std::string message = SysStr(
+                L"当前装配体尚未保存到本地，请先另存为 Z3ASM 文件后再入库");
+            PostStockInFailure(
+                "assemblyImportReady",
+                message.c_str(),
+                false);
+            return;
+        }
+
+        const int activateResult =
+            cvxRootActivate2(normalizedFilePath.c_str(), rootName.c_str());
+        if (activateResult != 0)
+        {
+            PostStockInFailure(
+                "assemblyImportReady",
+                "Unable to activate the selected ZW3D assembly",
+                false);
+            return;
+        }
+
+        const bool imported =
+            PostOpenAssemblyImportResult(normalizedFilePath.c_str(), rootName.c_str());
+        cvxRootActivate2(nullptr, nullptr);
+
+        if (!imported)
+        {
+            PostStockInFailure(
+                "assemblyImportReady",
+                "Unable to prepare the selected ZW3D assembly",
+                false);
+        }
+        return;
+    }
     if (_stricmp(action.c_str(), "pickAssemblyForStockIn") == 0)
     {
         char pathBuf[1024] = {};
@@ -5891,6 +7224,22 @@ void InitWebView2(
                                             L"pickPartForStockIn:function(){"
                                             L"window.chrome.webview.postMessage("
                                             L"'pickPartForStockIn');"
+                                            L"},"
+                                            L"listOpenParts:function(){"
+                                            L"window.chrome.webview.postMessage("
+                                            L"'listOpenParts');"
+                                            L"},"
+                                            L"importOpenPart:function(filePath,root){"
+                                            L"window.chrome.webview.postMessage("
+                                            L"'importOpenPart|'+(filePath||'')+'|'+(root||''));"
+                                            L"},"
+                                            L"listOpenAssemblies:function(){"
+                                            L"window.chrome.webview.postMessage("
+                                            L"'listOpenAssemblies');"
+                                            L"},"
+                                            L"importOpenAssembly:function(filePath,root){"
+                                            L"window.chrome.webview.postMessage("
+                                            L"'importOpenAssembly|'+(filePath||'')+'|'+(root||''));"
                                             L"},"
                                             L"pickAssemblyForStockIn:function(){"
                                             L"window.chrome.webview.postMessage("
